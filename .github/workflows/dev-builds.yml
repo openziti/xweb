@@ -1,0 +1,78 @@
+# builds on PR and PUSH for branches that aren't releases. This does include PRs to main but not PUSHING to main (which
+# triggers a release and is handled in release-builds.yml).
+#
+# Versions will have the last version tag used appended with a "-<commit hash>" and will have a non `main` branch
+#
+name: dev-builds
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+
+jobs:
+  mac-os-build:
+    name: Build Mac OS
+    runs-on: macos-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '~1.18.1'
+
+      - name: Build
+        run: |
+          go build ./...
+
+      - name: Test
+        run: |
+          go test ./...
+
+  windows-build:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '~1.18.1'
+
+      - name: Build
+        run: |
+          go build ./...
+
+      - name: Test
+        run: |
+          go test ./...
+
+  linux-build:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '~1.18.1'
+
+      - name: Build
+        run: |
+          go build ./...
+
+      - name: Test
+        run: |
+          go test ./...

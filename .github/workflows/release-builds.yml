@@ -1,0 +1,92 @@
+# builds on vX.X.X PUSH to main only. Generates versioned binaries, vX.X.X tags, and GitHub releases
+name: release-builds
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  mac-os-build:
+    name: Build Mac OS
+    runs-on: macos-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '~1.18.1'
+
+      - name: Build
+        run: |
+          go build ./...
+
+      - name: Test
+        run: |
+          go test ./...
+
+  windows-build:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '~1.18.1'
+
+      - name: Build
+        run: |
+          go build ./...
+
+      - name: Test
+        run: |
+          go test ./...
+
+  linux-build:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '~1.18.1'
+
+      - name: Build
+        run: |
+          go build ./...
+
+      - name: Test
+        run: |
+          go test ./...
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [mac-os-build, windows-build, linux-build]
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Create Release w/ Notes
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
