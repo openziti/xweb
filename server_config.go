@@ -22,24 +22,25 @@ import (
 	"github.com/pkg/errors"
 )
 
-// WebListener is the configuration that will eventually be used to create an xweb.Server (which in turn houses all
+// ServerConfig is the configuration that will eventually be used to create a xweb.Server (which in turn houses all
 // the components necessary to run multiple http.Server's).
-type WebListener struct {
+type ServerConfig struct {
+	DefaultHttpHandlerProviderImpl
 	Name       string
-	APIs       []*API
-	BindPoints []*BindPoint
+	APIs       []*ApiConfig
+	BindPoints []*BindPointConfig
 	Options    Options
 
 	DefaultIdentity identity.Identity
 	Identity        identity.Identity
 }
 
-// Parse parses a configuration map to set all relevant WebListener values.
-func (web *WebListener) Parse(webConfigMap map[interface{}]interface{}, pathContext string) error {
+// Parse parses a configuration map to set all relevant ServerConfig values.
+func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathContext string) error {
 	//parse name, required, string
-	if nameInterface, ok := webConfigMap["name"]; ok {
+	if nameInterface, ok := configMap["name"]; ok {
 		if name, ok := nameInterface.(string); ok {
-			web.Name = name
+			config.Name = name
 		} else {
 			return errors.New("name is required to be a string")
 		}
@@ -48,16 +49,16 @@ func (web *WebListener) Parse(webConfigMap map[interface{}]interface{}, pathCont
 	}
 
 	//parse apis, require 1, objet, defer
-	if apiInterface, ok := webConfigMap["apis"]; ok {
+	if apiInterface, ok := configMap["apis"]; ok {
 		if apiArrayInterfaces, ok := apiInterface.([]interface{}); ok {
 			for i, apiInterface := range apiArrayInterfaces {
 				if apiMap, ok := apiInterface.(map[interface{}]interface{}); ok {
-					api := &API{}
+					api := &ApiConfig{}
 					if err := api.Parse(apiMap); err != nil {
 						return fmt.Errorf("error parsing api configuration at index [%d]: %v", i, err)
 					}
 
-					web.APIs = append(web.APIs, api)
+					config.APIs = append(config.APIs, api)
 				} else {
 					return fmt.Errorf("error parsing api configuration at index [%d]: not a map", i)
 				}
@@ -70,16 +71,16 @@ func (web *WebListener) Parse(webConfigMap map[interface{}]interface{}, pathCont
 	}
 
 	//parse listen address
-	if addressInterface, ok := webConfigMap["bindPoints"]; ok {
+	if addressInterface, ok := configMap["bindPoints"]; ok {
 		if addressesArrayInterfaces, ok := addressInterface.([]interface{}); ok {
 			for i, addressInterface := range addressesArrayInterfaces {
 				if addressMap, ok := addressInterface.(map[interface{}]interface{}); ok {
-					address := &BindPoint{}
+					address := &BindPointConfig{}
 					if err := address.Parse(addressMap); err != nil {
 						return fmt.Errorf("error parsing address configuration at index [%d]: %v", i, err)
 					}
 
-					web.BindPoints = append(web.BindPoints, address)
+					config.BindPoints = append(config.BindPoints, address)
 				} else {
 					return fmt.Errorf("error parsing address configuration at index [%d]: not a map", i)
 				}
@@ -92,10 +93,10 @@ func (web *WebListener) Parse(webConfigMap map[interface{}]interface{}, pathCont
 	}
 
 	//parse identity
-	if identityInterface, ok := webConfigMap["identity"]; ok {
+	if identityInterface, ok := configMap["identity"]; ok {
 		if identityMap, ok := identityInterface.(map[interface{}]interface{}); ok {
-			if identityConfig, err := parseIdentityConfig(identityMap, pathContext + ".identity"); err == nil {
-				web.Identity, err = identity.LoadIdentity(*identityConfig)
+			if identityConfig, err := parseIdentityConfig(identityMap, pathContext+".identity"); err == nil {
+				config.Identity, err = identity.LoadIdentity(*identityConfig)
 				if err != nil {
 					return fmt.Errorf("error loading identity: %v", err)
 				}
@@ -110,12 +111,12 @@ func (web *WebListener) Parse(webConfigMap map[interface{}]interface{}, pathCont
 	} //no else, optional, will defer to router identity
 
 	//parse options
-	web.Options = Options{}
-	web.Options.Default()
+	config.Options = Options{}
+	config.Options.Default()
 
-	if optionsInterface, ok := webConfigMap["options"]; ok {
+	if optionsInterface, ok := configMap["options"]; ok {
 		if optionMap, ok := optionsInterface.(map[interface{}]interface{}); ok {
-			if err := web.Options.Parse(optionMap); err != nil {
+			if err := config.Options.Parse(optionMap); err != nil {
 				return fmt.Errorf("error parsing options section: %v", err)
 			}
 		} //no else, options are optional
@@ -124,50 +125,50 @@ func (web *WebListener) Parse(webConfigMap map[interface{}]interface{}, pathCont
 	return nil
 }
 
-// Validate all WebListener values
-func (web *WebListener) Validate(registry WebHandlerFactoryRegistry) error {
-	if web.Name == "" {
+// Validate all ServerConfig values
+func (config *ServerConfig) Validate(registry Registry) error {
+	if config.Name == "" {
 		return errors.New("name must not be empty")
 	}
 
-	if len(web.APIs) <= 0 {
+	if len(config.APIs) <= 0 {
 		return errors.New("no APIs specified, must specify at least one")
 	}
 
-	for i, api := range web.APIs {
+	for i, api := range config.APIs {
 		if err := api.Validate(); err != nil {
-			return fmt.Errorf("invalid API at index [%d]: %v", i, err)
+			return fmt.Errorf("invalid ApiConfig at index [%d]: %v", i, err)
 		}
 
 		//check if binding is valid
 		if binding := registry.Get(api.Binding()); binding == nil {
-			return fmt.Errorf("invalid API at index [%d]: invalid binding %s", i, api.Binding())
+			return fmt.Errorf("invalid ApiConfig at index [%d]: invalid binding %s", i, api.Binding())
 		}
 	}
 
-	if len(web.BindPoints) <= 0 {
+	if len(config.BindPoints) <= 0 {
 		return errors.New("no addresses specified, must specify at lest one")
 	}
 
-	for i, address := range web.BindPoints {
+	for i, address := range config.BindPoints {
 		if err := address.Validate(); err != nil {
 			return fmt.Errorf("invalid address at index [%d]: %v", i, err)
 		}
 	}
 
-	if web.Identity == nil {
-		if web.DefaultIdentity == nil {
+	if config.Identity == nil {
+		if config.DefaultIdentity == nil {
 			return errors.New("no default identity specified and no identity specified")
 		}
 
-		web.Identity = web.DefaultIdentity
+		config.Identity = config.DefaultIdentity
 	}
 
-	if err := web.Options.TlsVersionOptions.Validate(); err != nil {
+	if err := config.Options.TlsVersionOptions.Validate(); err != nil {
 		return fmt.Errorf("invalid TLS version option: %v", err)
 	}
 
-	if err := web.Options.TimeoutOptions.Validate(); err != nil {
+	if err := config.Options.TimeoutOptions.Validate(); err != nil {
 		return fmt.Errorf("invalid timeout option: %v", err)
 	}
 

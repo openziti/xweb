@@ -32,75 +32,76 @@ import (
 type ContextKey string
 
 const (
-	WebHandlerContextKey = ContextKey("XWebHandlerContextKey")
-	WebContextKey        = ContextKey("XWebContext")
-
 	ZitiCtrlAddressHeader = "ziti-ctrl-address"
 )
 
-type XWebContext struct {
-	BindPoint   *BindPoint
-	WebListener *WebListener
-	XWebConfig  *Config
+type ServerContext struct {
+	BindPoint    *BindPointConfig
+	ServerConfig *ServerConfig
+	Config       *InstanceConfig
 }
 
 type namedHttpServer struct {
 	*http.Server
-	ApiBindingList []string
-	BindPoint      *BindPoint
-	WebListener    *WebListener
-	XWebConfig     *Config
+	ApiBindingList  []string
+	BindPointConfig *BindPointConfig
+	ServerConfig    *ServerConfig
+	InstanceConfig  *InstanceConfig
 }
 
 func (s namedHttpServer) NewBaseContext(_ net.Listener) context.Context {
-	xwebContext := &XWebContext{
-		BindPoint:   s.BindPoint,
-		WebListener: s.WebListener,
-		XWebConfig:  s.XWebConfig,
+	serverContext := &ServerContext{
+		BindPoint:    s.BindPointConfig,
+		ServerConfig: s.ServerConfig,
+		Config:       s.InstanceConfig,
 	}
+
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, WebContextKey, xwebContext)
+	ctx = context.WithValue(ctx, ServerContextKey, serverContext)
 
 	return ctx
 }
 
-// Server represents all of the http.Server's and http.Handler's necessary to run a single xweb.WebListener
+// Server represents all the http.Server's and http.Handler's necessary to run a single xweb.ServerConfig
 type Server struct {
-	httpServers       []*namedHttpServer
-	logWriter         *io.PipeWriter
-	options           *Options
-	config            interface{}
-	Handle            http.Handler
-	OnHandlerPanic    func(writer http.ResponseWriter, request *http.Request, panicVal interface{})
-	ParentWebListener *WebListener
+	DefaultHttpHandlerProviderImpl
+	httpServers    []*namedHttpServer
+	logWriter      *io.PipeWriter
+	options        *Options
+	config         interface{}
+	Handle         http.Handler
+	OnHandlerPanic func(writer http.ResponseWriter, request *http.Request, panicVal interface{})
+	ServerConfig   *ServerConfig
 }
 
-// NewServer creates a new xweb.Server from an xweb.WebListener. All necessary http.Handler's will be created from the supplied
-// DemuxFactory and WebHandlerFactoryRegistry.
-func NewServer(webListener *WebListener, demuxFactory DemuxFactory, handlerFactoryRegistry WebHandlerFactoryRegistry, config *Config) (*Server, error) {
+// NewServer creates a new Server from a ServerConfig. All necessary http.Handler's will be created from the supplied
+// DemuxFactory and Registry.
+func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 	logWriter := pfxlog.Logger().Writer()
 
-	tlsConfig := webListener.Identity.ServerTLSConfig()
+	tlsConfig := serverConfig.Identity.ServerTLSConfig()
 	tlsConfig.ClientAuth = tls.RequestClientCert
-	tlsConfig.MinVersion = uint16(webListener.Options.MinTLSVersion)
-	tlsConfig.MaxVersion = uint16(webListener.Options.MaxTLSVersion)
+	tlsConfig.MinVersion = uint16(serverConfig.Options.MinTLSVersion)
+	tlsConfig.MaxVersion = uint16(serverConfig.Options.MaxTLSVersion)
 
 	server := &Server{
-		logWriter:         logWriter,
-		config:            &webListener,
-		httpServers:       []*namedHttpServer{},
-		ParentWebListener: webListener,
+		logWriter:    logWriter,
+		config:       &serverConfig,
+		httpServers:  []*namedHttpServer{},
+		ServerConfig: serverConfig,
 	}
 
-	var webHandlers []WebHandler
+	server.SetParent(instance)
+
+	var handlers []ApiHandler
 	var apiBindingList []string
 
-	for _, api := range webListener.APIs {
-		if factory := handlerFactoryRegistry.Get(api.Binding()); factory != nil {
-			if webHandler, err := factory.New(webListener, api.Options()); err != nil {
+	for _, api := range serverConfig.APIs {
+		if apiFactory := instance.GetRegistry().Get(api.Binding()); apiFactory != nil {
+			if handler, err := apiFactory.New(serverConfig, api.Options()); err != nil {
 				pfxlog.Logger().Fatalf("encountered error building handler for api binding [%s]: %v", api.Binding(), err)
 			} else {
-				webHandlers = append(webHandlers, webHandler)
+				handlers = append(handlers, handler)
 				apiBindingList = append(apiBindingList, api.binding)
 			}
 		} else {
@@ -108,24 +109,25 @@ func NewServer(webListener *WebListener, demuxFactory DemuxFactory, handlerFacto
 		}
 	}
 
-	demuxWebHandler, err := demuxFactory.Build(webHandlers)
+	demuxHandler, err := instance.GetDemuxFactory().Build(handlers)
+	demuxHandler.SetParent(server)
 
 	if err != nil {
 		return nil, fmt.Errorf("error creating server: %v", err)
 	}
 
-	for _, bindPoint := range webListener.BindPoints {
+	for _, bindPoint := range serverConfig.BindPoints {
 		namedServer := &namedHttpServer{
-			ApiBindingList: apiBindingList,
-			WebListener:    webListener,
-			BindPoint:      bindPoint,
-			XWebConfig:     config,
+			ApiBindingList:  apiBindingList,
+			ServerConfig:    serverConfig,
+			BindPointConfig: bindPoint,
+			InstanceConfig:  instance.GetConfig(),
 			Server: &http.Server{
 				Addr:         bindPoint.InterfaceAddress,
-				WriteTimeout: webListener.Options.WriteTimeout,
-				ReadTimeout:  webListener.Options.ReadTimeout,
-				IdleTimeout:  webListener.Options.IdleTimeout,
-				Handler:      server.wrapHandler(webListener, bindPoint, demuxWebHandler),
+				WriteTimeout: serverConfig.Options.WriteTimeout,
+				ReadTimeout:  serverConfig.Options.ReadTimeout,
+				IdleTimeout:  serverConfig.Options.IdleTimeout,
+				Handler:      server.wrapHandler(serverConfig, bindPoint, demuxHandler),
 				TLSConfig:    tlsConfig,
 				ErrorLog:     log.New(logWriter, "", 0),
 			},
@@ -139,7 +141,7 @@ func NewServer(webListener *WebListener, demuxFactory DemuxFactory, handlerFacto
 	return server, nil
 }
 
-func (server *Server) wrapHandler(_ *WebListener, point *BindPoint, handler http.Handler) http.Handler {
+func (server *Server) wrapHandler(_ *ServerConfig, point *BindPointConfig, handler http.Handler) http.Handler {
 	//innermost/bottom -> outermost/top
 	handler = server.wrapSetCtrlAddressHeader(point, handler)
 	handler = server.wrapPanicRecovery(handler)
@@ -171,7 +173,7 @@ func (server *Server) wrapPanicRecovery(handler http.Handler) http.Handler {
 // header to be notified that the controller is or will be moving from one ip/hostname to another. When the
 // new address value is set, both the old and new addresses should be valid as the clients will begin using the
 // new address on their next connect.
-func (server *Server) wrapSetCtrlAddressHeader(point *BindPoint, handler http.Handler) http.Handler {
+func (server *Server) wrapSetCtrlAddressHeader(point *BindPointConfig, handler http.Handler) http.Handler {
 	wrappedHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if point.NewAddress != "" {
 			address := "https://" + point.NewAddress
@@ -189,7 +191,7 @@ func (server *Server) Start() error {
 	logger := pfxlog.Logger()
 
 	for _, httpServer := range server.httpServers {
-		logger.Infof("starting API to listen and serve tls on %s for web listener %s with APIs: %v", httpServer.Addr, httpServer.WebListener.Name, httpServer.ApiBindingList)
+		logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", httpServer.Addr, httpServer.ServerConfig.Name, httpServer.ApiBindingList)
 		err := httpServer.ListenAndServeTLS("", "")
 		if err != http.ErrServerClosed {
 
