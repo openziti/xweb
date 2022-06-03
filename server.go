@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/util/debugz"
-	"github.com/openziti/xweb/middleware"
+	"github.com/openziti/xweb/v2/middleware"
 	"io"
 	"log"
 	"net"
