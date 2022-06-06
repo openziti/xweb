@@ -49,31 +49,31 @@ var ReverseTlsVersionMap = map[int]string{
 	tls.VersionTLS13: "TLS1.3",
 }
 
-// Config is the root configuration options necessary to start numerous http.Server instances via WebListener's.
-type Config struct {
+// InstanceConfig is the root configuration options necessary to start numerous http.Server instances
+type InstanceConfig struct {
 	SourceConfig map[interface{}]interface{}
 
-	WebListeners []*WebListener
-	WebSection   string
+	ServerConfigs []*ServerConfig
+	Section       string
 
 	DefaultIdentity        identity.Identity
 	DefaultIdentitySection string
 
-	//used for loading/validation logic, use DefaultIdentity.Config() for runtime
+	//used for loading/validation logic, use DefaultIdentity.InstanceConfig() for runtime
 	defaultIdentityConfig *identity.Config
 
 	enabled bool
 }
 
-// Parse parses a configuration map, looking for sections that define an identity.Config and an array of WebListener's.
-func (config *Config) Parse(configMap map[interface{}]interface{}) error {
+// Parse parses a configuration map, looking for sections that define an identity.InstanceConfig and an array of ServerConfig's.
+func (config *InstanceConfig) Parse(configMap map[interface{}]interface{}) error {
 	config.SourceConfig = configMap
 
 	if config.DefaultIdentity == nil && config.DefaultIdentitySection == "" {
 		return errors.New("identity section not specified for configuration, must be specified if a default identity is not provided")
 	}
 
-	if config.WebSection == "" {
+	if config.Section == "" {
 		return errors.New("web section not specified for configuration")
 	}
 
@@ -97,34 +97,34 @@ func (config *Config) Parse(configMap map[interface{}]interface{}) error {
 		config.defaultIdentityConfig = config.DefaultIdentity.GetConfig()
 	}
 
-	if webInterface, ok := configMap[config.WebSection]; ok {
+	if sectionVal, ok := configMap[config.Section]; ok {
 		//treat section like an array of maps
-		if webArrayInterface, ok := webInterface.([]interface{}); ok {
-			for i, webInterface := range webArrayInterface {
-				if webMap, ok := webInterface.(map[interface{}]interface{}); ok {
-					webListener := &WebListener{
+		if sectionArrayVals, ok := sectionVal.([]interface{}); ok {
+			for i, sectionArrayVal := range sectionArrayVals {
+				if sectionMap, ok := sectionArrayVal.(map[interface{}]interface{}); ok {
+					serverConfig := &ServerConfig{
 						DefaultIdentity: config.DefaultIdentity,
 					}
-					if err := webListener.Parse(webMap, config.WebSection); err != nil {
-						return fmt.Errorf("error parsing web configuration [%s] at index [%d]: %v", config.WebSection, i, err)
+					if err := serverConfig.Parse(sectionMap, config.Section); err != nil {
+						return fmt.Errorf("error parsing web configuration [%s] at index [%d]: %v", config.Section, i, err)
 					}
 
-					config.WebListeners = append(config.WebListeners, webListener)
+					config.ServerConfigs = append(config.ServerConfigs, serverConfig)
 				} else {
-					return fmt.Errorf("error parsing web configuration [%s] at index [%d]: not a map", config.WebSection, i)
+					return fmt.Errorf("error parsing web configuration [%s] at index [%d]: not a map", config.Section, i)
 				}
 			}
 		} else {
-			return fmt.Errorf("%s identity section [%s] must be a map", config.WebSection, config.DefaultIdentitySection)
+			return fmt.Errorf("%s identity section [%s] must be a map", config.Section, config.DefaultIdentitySection)
 		}
 	}
 
 	return nil
 }
 
-// Validate uses a WebHandlerFactoryRegistry to validate that all API bindings may be fulfilled. All other relevant
-// Config values are also validated.
-func (config *Config) Validate(registry WebHandlerFactoryRegistry) error {
+// Validate uses a Registry to validate that all ApiConfig bindings may be fulfilled. All other relevant
+// InstanceConfig values are also validated.
+func (config *InstanceConfig) Validate(registry Registry) error {
 
 	if config.DefaultIdentity == nil {
 		//validate default identity by loading
@@ -135,27 +135,27 @@ func (config *Config) Validate(registry WebHandlerFactoryRegistry) error {
 		}
 
 		//add default loaded identity to each web
-		for _, webListener := range config.WebListeners {
-			webListener.DefaultIdentity = config.DefaultIdentity
+		for _, serverConfig := range config.ServerConfigs {
+			serverConfig.DefaultIdentity = config.DefaultIdentity
 		}
 	}
 
-	presentApis := map[string]WebHandlerFactory{}
+	presentApis := map[string]ApiHandlerFactory{}
 
-	for i, webListener := range config.WebListeners {
+	for i, serverConfig := range config.ServerConfigs {
 		//validate attributes
-		if err := webListener.Validate(registry); err != nil {
-			return fmt.Errorf("could not validate web listener at %s[%d]: %v", config.WebSection, i, err)
+		if err := serverConfig.Validate(registry); err != nil {
+			return fmt.Errorf("could not validate server at %s[%d]: %v", config.Section, i, err)
 		}
 
-		for _, api := range webListener.APIs {
+		for _, api := range serverConfig.APIs {
 			presentApis[api.Binding()] = registry.Get(api.Binding())
 		}
 	}
 
 	for presentApiBinding, presentApiFactory := range presentApis {
 		if err := presentApiFactory.Validate(config); err != nil {
-			return fmt.Errorf("error validating API binding %s: %v", presentApiBinding, err)
+			return fmt.Errorf("error validating ApiConfig binding %s: %v", presentApiBinding, err)
 		}
 	}
 
@@ -167,11 +167,11 @@ func (config *Config) Validate(registry WebHandlerFactoryRegistry) error {
 
 // Enabled returns true/false on whether this configuration should be considered "enabled". Set to true after
 // Validate passes.
-func (config *Config) Enabled() bool {
+func (config *InstanceConfig) Enabled() bool {
 	return config.enabled
 }
 
-// Options is the shared options for a WebListener.
+// Options is the shared options for a ServerConfig.
 type Options struct {
 	TimeoutOptions
 	TlsVersionOptions

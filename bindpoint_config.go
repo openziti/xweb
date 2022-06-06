@@ -24,16 +24,16 @@ import (
 	"strings"
 )
 
-// BindPoint represents the interface:port address of where a http.Server should listen for a WebListener and the public
+// BindPointConfig represents the interface:port address of where a http.Server should listen for a ServerConfig and the public
 // address that should be used to address it.
-type BindPoint struct {
-	InterfaceAddress string // <interface>:<port>
+type BindPointConfig struct {
+	InterfaceAddress string //<interface>:<port>
 	Address          string //<ip/host>:<port>
 	NewAddress       string //<ip/host>:<port> sent out as a header for clients to alternatively swap to (ip -> hostname moves)
 }
 
-// Parse the configuration map for a BindPoint.
-func (bindPoint *BindPoint) Parse(config map[interface{}]interface{}) error {
+// Parse the configuration map for a BindPointConfig.
+func (bindPoint *BindPointConfig) Parse(config map[interface{}]interface{}) error {
 	if interfaceVal, ok := config["interface"]; ok {
 		if address, ok := interfaceVal.(string); ok {
 			bindPoint.InterfaceAddress = address
@@ -62,7 +62,7 @@ func (bindPoint *BindPoint) Parse(config map[interface{}]interface{}) error {
 }
 
 // Validate this configuration object.
-func (bindPoint *BindPoint) Validate() error {
+func (bindPoint *BindPointConfig) Validate() error {
 
 	// required
 	if err := validateHostPort(bindPoint.InterfaceAddress); err != nil {

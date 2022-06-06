@@ -1,4 +1,4 @@
-module github.com/openziti/xweb
+module github.com/openziti/xweb/v2
 
 go 1.18
 
