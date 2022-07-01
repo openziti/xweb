@@ -1,5 +1,5 @@
 /*
-	Copyright NetFoundry, Inc.
+	Copyright NetFoundry Inc.
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/util/debugz"
+	"github.com/openziti/foundation/v2/debugz"
 	"github.com/openziti/xweb/v2/middleware"
 	"io"
 	"log"
