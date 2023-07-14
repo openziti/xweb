@@ -19,9 +19,11 @@ package xweb
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/v2/debugz"
+	transporttls "github.com/openziti/transport/v2/tls"
 	"github.com/openziti/xweb/v2/middleware"
 	"io"
 	"log"
@@ -192,9 +194,17 @@ func (server *Server) Start() error {
 
 	for _, httpServer := range server.httpServers {
 		logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", httpServer.Addr, httpServer.ServerConfig.Name, httpServer.ApiBindingList)
-		err := httpServer.ListenAndServeTLS("", "")
-		if err != http.ErrServerClosed {
 
+		cfg := httpServer.TLSConfig
+		// make sure to listen to the expected protocols
+		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
+		l, err := transporttls.ListenTLS(httpServer.Addr, httpServer.ServerConfig.Name, cfg)
+		if err != nil {
+			return fmt.Errorf("error listening: %s", err)
+		}
+		err = httpServer.Serve(l)
+
+		if !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("error listening: %s", err)
 		}
 	}
