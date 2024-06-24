@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
 	"time"
 )
@@ -130,6 +131,10 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 		//validate default identity by loading
 		if defaultIdentity, err := identity.LoadIdentity(*config.defaultIdentityConfig); err == nil {
 			config.DefaultIdentity = defaultIdentity
+
+			if err := config.DefaultIdentity.WatchFiles(); err != nil {
+				pfxlog.Logger().Warnf("could not enable file watching on default identity: %w", err)
+			}
 		} else {
 			return fmt.Errorf("could not load default identity: %v", err)
 		}

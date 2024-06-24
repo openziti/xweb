@@ -18,6 +18,7 @@ package xweb
 
 import (
 	"fmt"
+	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
 	"github.com/pkg/errors"
 )
@@ -99,6 +100,10 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 				config.Identity, err = identity.LoadIdentity(*identityConfig)
 				if err != nil {
 					return fmt.Errorf("error loading identity: %v", err)
+				}
+
+				if err := config.DefaultIdentity.WatchFiles(); err != nil {
+					pfxlog.Logger().Warnf("could not enable file watching on bind point identity: %v", err)
 				}
 			} else {
 				return fmt.Errorf("error parsing identity section: %v", err)
