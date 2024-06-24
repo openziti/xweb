@@ -133,7 +133,7 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 			config.DefaultIdentity = defaultIdentity
 
 			if err := config.DefaultIdentity.WatchFiles(); err != nil {
-				pfxlog.Logger().Warnf("could not enable file watching on default identity: %w", err)
+				pfxlog.Logger().Warnf("could not enable file watching on default identity: %v", err)
 			}
 		} else {
 			return fmt.Errorf("could not load default identity: %v", err)
