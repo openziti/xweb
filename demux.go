@@ -18,10 +18,9 @@ package xweb
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
 	"net/http"
-	"reflect"
 	"strings"
 )
 
@@ -59,21 +58,10 @@ var _ DemuxFactory = &PathPrefixDemuxFactory{}
 
 // Build performs ApiHandler selection based on URL path prefixes
 func (factory *PathPrefixDemuxFactory) Build(handlers []ApiHandler) (DemuxHandler, error) {
-	var defaultApi ApiHandler = nil
+	defaultApi, err := getDefault(handlers)
 
-	for _, handler := range handlers {
-		if newDefaultApi, ok := handler.(DefaultApiHandler); ok {
-			if newDefaultApi.IsDefault() {
-
-				if defaultApi != nil {
-					pfxlog.Logger().
-						WithField("previous", reflect.TypeOf(defaultApi)).
-						WithField("new", reflect.TypeOf(newDefaultApi)).
-						Warn("multiple ApiHandlers registered as the default")
-				}
-				defaultApi = handler
-			}
-		}
+	if err != nil {
+		return nil, err
 	}
 
 	handlerMap := map[string]ApiHandler{}
@@ -116,6 +104,34 @@ func (factory *PathPrefixDemuxFactory) Build(handlers []ApiHandler) (DemuxHandle
 	}, nil
 }
 
+func getDefault(handlers []ApiHandler) (ApiHandler, error) {
+	var defaults []ApiHandler
+	for _, handler := range handlers {
+		if curHandler, ok := handler.(DefaultApiHandler); ok {
+			if curHandler.IsDefault() {
+				defaults = append(defaults, curHandler)
+			}
+		}
+	}
+
+	if len(defaults) == 0 {
+		return nil, errors.New("no default handlers found")
+	}
+
+	if len(defaults) > 1 {
+		var names []string
+		for _, handler := range defaults {
+			name := fmt.Sprintf("[Binding: %s, Type: %T]", handler.Binding(), handler)
+			names = append(names, name)
+		}
+
+		strNames := strings.Join(names, ",")
+		return nil, errors.New("too many default handlers found, ensure that only one handler is marked as the default: " + strNames)
+	}
+
+	return defaults[0], nil
+}
+
 // IsHandledDemuxFactory is a DemuxFactory that routes http.Request requests to a specific ApiHandler by delegating
 // to the ApiHandler's IsHandled function.
 type IsHandledDemuxFactory struct {
@@ -126,21 +142,10 @@ var _ DemuxFactory = &IsHandledDemuxFactory{}
 
 // Build performs ApiHandler selection based on IsHandled()
 func (factory *IsHandledDemuxFactory) Build(handlers []ApiHandler) (DemuxHandler, error) {
-	var defaultApi ApiHandler = nil
+	defaultApi, err := getDefault(handlers)
 
-	for _, handler := range handlers {
-		if newDefaultApi, ok := handler.(DefaultApiHandler); ok {
-			if newDefaultApi.IsDefault() {
-
-				if defaultApi != nil {
-					pfxlog.Logger().
-						WithField("previous", reflect.TypeOf(defaultApi)).
-						WithField("new", reflect.TypeOf(newDefaultApi)).
-						Warn("multiple ApiHandlers registered as the default")
-				}
-				defaultApi = handler
-			}
-		}
+	if err != nil {
+		return nil, err
 	}
 
 	return &DemuxHandlerImpl{

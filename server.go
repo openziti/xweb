@@ -112,11 +112,12 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 	}
 
 	demuxHandler, err := instance.GetDemuxFactory().Build(handlers)
-	demuxHandler.SetParent(server)
 
 	if err != nil {
 		return nil, fmt.Errorf("error creating server: %v", err)
 	}
+
+	demuxHandler.SetParent(server)
 
 	for _, bindPoint := range serverConfig.BindPoints {
 		namedServer := &namedHttpServer{
