@@ -105,8 +105,8 @@ func (factory *PathPrefixDemuxFactory) Build(handlers []ApiHandler) (DemuxHandle
 	}, nil
 }
 
-// getDefault determines from an slice of ApiHandler which will act as the default handlers
-// should a request no match any handler. The default is determined in one of two ways:
+// getDefault determines from a slice of ApiHandler which will act as the default handlers
+// should a request not match any handler. The default is determined in one of two ways:
 // 1) a handler declares itself the default
 // 2) no handler declares itself the default
 //
