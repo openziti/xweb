@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/michaelquigley/pfxlog"
 	"net/http"
 	"strings"
 )
@@ -104,8 +105,21 @@ func (factory *PathPrefixDemuxFactory) Build(handlers []ApiHandler) (DemuxHandle
 	}, nil
 }
 
+// getDefault determines from an slice of ApiHandler which will act as the default handlers
+// should a request no match any handler. The default is determined in one of two ways:
+// 1) a handler declares itself the default
+// 2) no handler declares itself the default
+//
+// If a handler declares itself the default, only one is allowed to do so and if another
+// handler does so, it will generate an error. If no handler declares itself, the
+// last handler will be used.
 func getDefault(handlers []ApiHandler) (ApiHandler, error) {
 	var defaults []ApiHandler
+
+	if len(handlers) == 0 {
+		return nil, errors.New("no handlers provided")
+	}
+
 	for _, handler := range handlers {
 		if curHandler, ok := handler.(DefaultApiHandler); ok {
 			if curHandler.IsDefault() {
@@ -115,7 +129,9 @@ func getDefault(handlers []ApiHandler) (ApiHandler, error) {
 	}
 
 	if len(defaults) == 0 {
-		return nil, errors.New("no default handlers found")
+		lastHandler := handlers[len(handlers)-1]
+		pfxlog.Logger().Warnf("no defualt handlers were found, using the last handler [Binding: %s, Type: %T] as the default", lastHandler.Binding(), lastHandler)
+		return lastHandler, nil
 	}
 
 	if len(defaults) > 1 {
