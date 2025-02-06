@@ -147,6 +147,7 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 
 	presentApis := map[string]ApiHandlerFactory{}
 
+	var errs []error
 	for i, serverConfig := range config.ServerConfigs {
 		//validate attributes
 		if err := serverConfig.Validate(registry); err != nil {
@@ -156,6 +157,16 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 		for _, api := range serverConfig.APIs {
 			presentApis[api.Binding()] = registry.Get(api.Binding())
 		}
+		for _, bp := range serverConfig.BindPoints {
+			ve := serverConfig.Identity.ValidFor(bp.Address)
+			if ve != nil {
+				errs = append(errs, ve)
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	for presentApiBinding, presentApiFactory := range presentApis {
