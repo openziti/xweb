@@ -166,7 +166,7 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("%v", errs)
+		return errors.Join(errs...)
 	}
 
 	for presentApiBinding, presentApiFactory := range presentApis {
