@@ -159,9 +159,6 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 			presentApis[api.Binding()] = registry.Get(api.Binding())
 		}
 		for _, bp := range serverConfig.BindPoints {
-			if bp == nil {
-				continue
-			}
 			ve := serverConfig.Identity.ValidFor(strings.Split(bp.Address, ":")[0])
 			if ve != nil {
 				errs = append(errs, ve)
