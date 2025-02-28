@@ -30,7 +30,7 @@ type ServerConfig struct {
 	Name       string
 	APIs       []*ApiConfig
 	BindPoints []*BindPointConfig
-	Options    Options
+	Options    ServerConfigOptions
 
 	DefaultIdentity identity.Identity
 	Identity        identity.Identity
@@ -116,7 +116,7 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 	} //no else, optional, will defer to router identity
 
 	//parse options
-	config.Options = Options{}
+	config.Options = ServerConfigOptions{}
 	config.Options.Default()
 
 	if optionsInterface, ok := configMap["options"]; ok {

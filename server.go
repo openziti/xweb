@@ -69,7 +69,7 @@ type Server struct {
 	DefaultHttpHandlerProviderImpl
 	httpServers    []*namedHttpServer
 	logWriter      *io.PipeWriter
-	options        *Options
+	options        *ServerConfigOptions
 	config         interface{}
 	Handle         http.Handler
 	OnHandlerPanic func(writer http.ResponseWriter, request *http.Request, panicVal interface{})
