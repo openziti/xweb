@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
-	"strings"
 	"time"
 )
 
@@ -56,68 +55,66 @@ type InstanceConfig struct {
 	SourceConfig map[interface{}]interface{}
 
 	ServerConfigs []*ServerConfig
-	Section       string
-
-	DefaultIdentity        identity.Identity
-	DefaultIdentitySection string
 
 	//used for loading/validation logic, use DefaultIdentity.InstanceConfig() for runtime
 	defaultIdentityConfig *identity.Config
 
 	enabled bool
+
+	Options InstanceOptions
 }
 
 // Parse parses a configuration map, looking for sections that define an identity.InstanceConfig and an array of ServerConfig's.
 func (config *InstanceConfig) Parse(configMap map[interface{}]interface{}) error {
 	config.SourceConfig = configMap
 
-	if config.DefaultIdentity == nil && config.DefaultIdentitySection == "" {
+	if config.Options.DefaultIdentity == nil && config.Options.DefaultIdentitySection == "" {
 		return errors.New("identity section not specified for configuration, must be specified if a default identity is not provided")
 	}
 
-	if config.Section == "" {
+	if config.Options.DefaultConfigSection == "" {
 		return errors.New("web section not specified for configuration")
 	}
 
 	//default identity config is the root identity
-	if config.DefaultIdentity == nil {
-		if identityInterface, ok := configMap[config.DefaultIdentitySection]; ok {
+	if config.Options.DefaultIdentity == nil {
+		if identityInterface, ok := configMap[config.Options.DefaultIdentitySection]; ok {
 			if identityMap, ok := identityInterface.(map[interface{}]interface{}); ok {
-				if identityConfig, err := parseIdentityConfig(identityMap, config.DefaultIdentitySection); err == nil {
+				if identityConfig, err := parseIdentityConfig(identityMap, config.Options.DefaultIdentitySection); err == nil {
 					config.defaultIdentityConfig = identityConfig
 				} else {
-					return fmt.Errorf("error parsing root identity section [%s] : %v", config.DefaultIdentitySection, err)
+					return fmt.Errorf("error parsing root identity section [%s] : %v", config.Options.DefaultIdentitySection, err)
 				}
 
 			} else {
-				return fmt.Errorf("root identity section [%s] must be a map", config.DefaultIdentitySection)
+				return fmt.Errorf("root identity section [%s] must be a map", config.Options.DefaultIdentitySection)
 			}
 		} else {
-			return fmt.Errorf("root identity section [%s] must be defined", config.DefaultIdentitySection)
+			return fmt.Errorf("root identity section [%s] must be defined", config.Options.DefaultIdentitySection)
 		}
 	} else {
-		config.defaultIdentityConfig = config.DefaultIdentity.GetConfig()
+		config.defaultIdentityConfig = config.Options.DefaultIdentity.GetConfig()
 	}
 
-	if sectionVal, ok := configMap[config.Section]; ok {
+	if sectionVal, ok := configMap[config.Options.DefaultConfigSection]; ok {
 		//treat section like an array of maps
 		if sectionArrayVals, ok := sectionVal.([]interface{}); ok {
 			for i, sectionArrayVal := range sectionArrayVals {
 				if sectionMap, ok := sectionArrayVal.(map[interface{}]interface{}); ok {
 					serverConfig := &ServerConfig{
-						DefaultIdentity: config.DefaultIdentity,
+						DefaultIdentity: config.Options.DefaultIdentity,
 					}
-					if err := serverConfig.Parse(sectionMap, config.Section); err != nil {
-						return fmt.Errorf("error parsing web configuration [%s] at index [%d]: %v", config.Section, i, err)
+					if err := serverConfig.Parse(sectionMap, config.Options.DefaultConfigSection); err != nil {
+						return fmt.Errorf("error parsing web configuration [%s] at index [%d]: %v", config.Options.DefaultConfigSection, i, err)
 					}
 
 					config.ServerConfigs = append(config.ServerConfigs, serverConfig)
 				} else {
-					return fmt.Errorf("error parsing web configuration [%s] at index [%d]: not a map", config.Section, i)
+					return fmt.Errorf("error parsing web configuration [%s] at index [%d]: not a map", config.Options.DefaultConfigSection, i)
 				}
 			}
 		} else {
-			return fmt.Errorf("%s identity section [%s] must be a map", config.Section, config.DefaultIdentitySection)
+			return fmt.Errorf("%s identity section [%s] must be a map", config.Options.DefaultConfigSection, config.Options.DefaultIdentitySection)
 		}
 	}
 
@@ -128,12 +125,12 @@ func (config *InstanceConfig) Parse(configMap map[interface{}]interface{}) error
 // InstanceConfig values are also validated.
 func (config *InstanceConfig) Validate(registry Registry) error {
 
-	if config.DefaultIdentity == nil {
+	if config.Options.DefaultIdentity == nil {
 		//validate default identity by loading
 		if defaultIdentity, err := identity.LoadIdentity(*config.defaultIdentityConfig); err == nil {
-			config.DefaultIdentity = defaultIdentity
+			config.Options.DefaultIdentity = defaultIdentity
 
-			if err := config.DefaultIdentity.WatchFiles(); err != nil {
+			if err := config.Options.DefaultIdentity.WatchFiles(); err != nil {
 				pfxlog.Logger().Warnf("could not enable file watching on default identity: %v", err)
 			}
 		} else {
@@ -142,7 +139,7 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 
 		//add default loaded identity to each web
 		for _, serverConfig := range config.ServerConfigs {
-			serverConfig.DefaultIdentity = config.DefaultIdentity
+			serverConfig.DefaultIdentity = config.Options.DefaultIdentity
 		}
 	}
 
@@ -152,17 +149,19 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 	for i, serverConfig := range config.ServerConfigs {
 		//validate attributes
 		if err := serverConfig.Validate(registry); err != nil {
-			return fmt.Errorf("could not validate server at %s[%d]: %v", config.Section, i, err)
+			return fmt.Errorf("could not validate server at %s[%d]: %v", config.Options.DefaultConfigSection, i, err)
 		}
 
 		for _, api := range serverConfig.APIs {
 			presentApis[api.Binding()] = registry.Get(api.Binding())
 		}
-		for _, bp := range serverConfig.BindPoints {
-			ve := serverConfig.Identity.ValidFor(strings.Split(bp.Address, ":")[0])
-			if ve != nil {
-				errs = append(errs, ve)
-			}
+	}
+
+	//custom instance validators, run after all the regular ones
+	for _, instanceValidator := range config.Options.InstanceValidators {
+		ve := instanceValidator(config)
+		if ve != nil {
+			errs = append(errs, ve)
 		}
 	}
 
@@ -188,20 +187,20 @@ func (config *InstanceConfig) Enabled() bool {
 	return config.enabled
 }
 
-// Options is the shared options for a ServerConfig.
-type Options struct {
+// ServerConfigOptions is the shared options for a ServerConfig.
+type ServerConfigOptions struct {
 	TimeoutOptions
 	TlsVersionOptions
 }
 
 // Default provides defaults for all necessary values
-func (options *Options) Default() {
+func (options *ServerConfigOptions) Default() {
 	options.TimeoutOptions.Default()
 	options.TlsVersionOptions.Default()
 }
 
 // Parse parses a configuration map
-func (options *Options) Parse(optionsMap map[interface{}]interface{}) error {
+func (options *ServerConfigOptions) Parse(optionsMap map[interface{}]interface{}) error {
 	if err := options.TimeoutOptions.Parse(optionsMap); err != nil {
 		return fmt.Errorf("error parsing options: %v", err)
 	}

@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/andybalholm/brotli v1.0.4
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/michaelquigley/pfxlog v0.6.10
 	github.com/openziti/foundation/v2 v2.0.56
 	github.com/openziti/identity v1.0.95
