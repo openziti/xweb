@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
-	"strings"
 	"time"
 )
 
@@ -155,13 +154,6 @@ func (config *InstanceConfig) Validate(registry Registry) error {
 
 		for _, api := range serverConfig.APIs {
 			presentApis[api.Binding()] = registry.Get(api.Binding())
-		}
-
-		for _, bp := range serverConfig.BindPoints {
-			ve := serverConfig.Identity.ValidFor(strings.Split(bp.Address, ":")[0])
-			if ve != nil {
-				errs = append(errs, ve)
-			}
 		}
 	}
 

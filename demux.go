@@ -130,7 +130,7 @@ func getDefault(handlers []ApiHandler) (ApiHandler, error) {
 
 	if len(defaults) == 0 {
 		lastHandler := handlers[len(handlers)-1]
-		pfxlog.Logger().Warnf("no defualt handlers were found, using the last handler [Binding: %s, Type: %T] as the default", lastHandler.Binding(), lastHandler)
+		pfxlog.Logger().Warnf("no default handlers were found, using the last handler [Binding: %s, Type: %T] as the default", lastHandler.Binding(), lastHandler)
 		return lastHandler, nil
 	}
 
