@@ -67,7 +67,7 @@ func (s namedHttpServer) NewBaseContext(_ net.Listener) context.Context {
 // Server represents all the http.Server's and http.Handler's necessary to run a single xweb.ServerConfig
 type Server struct {
 	DefaultHttpHandlerProviderImpl
-	httpServers    []*namedHttpServer
+	HttpServers    []*namedHttpServer
 	logWriter      *io.PipeWriter
 	options        *ServerConfigOptions
 	config         interface{}
@@ -89,7 +89,7 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 	server := &Server{
 		logWriter:    logWriter,
 		config:       &serverConfig,
-		httpServers:  []*namedHttpServer{},
+		HttpServers:  []*namedHttpServer{},
 		ServerConfig: serverConfig,
 	}
 
@@ -138,7 +138,13 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 
 		namedServer.BaseContext = namedServer.NewBaseContext
 
-		server.httpServers = append(server.httpServers, namedServer)
+		server.HttpServers = append(server.HttpServers, namedServer)
+	}
+
+	for _, mutator := range instance.GetConfig().Options.ServerMutators {
+		if err = mutator(instance, serverConfig, server); err != nil {
+			return nil, fmt.Errorf("encountered error mutating server instance: %v", err)
+		}
 	}
 
 	return server, nil
@@ -193,7 +199,7 @@ func (server *Server) wrapSetCtrlAddressHeader(point *BindPointConfig, handler h
 func (server *Server) Start() error {
 	logger := pfxlog.Logger()
 
-	for _, httpServer := range server.httpServers {
+	for _, httpServer := range server.HttpServers {
 		logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", httpServer.Addr, httpServer.ServerConfig.Name, httpServer.ApiBindingList)
 
 		cfg := httpServer.TLSConfig
@@ -217,7 +223,7 @@ func (server *Server) Start() error {
 func (server *Server) Shutdown(ctx context.Context) {
 	_ = server.logWriter.Close()
 
-	for _, httpServer := range server.httpServers {
+	for _, httpServer := range server.HttpServers {
 		localServer := httpServer
 		func() {
 			_ = localServer.Shutdown(ctx)
