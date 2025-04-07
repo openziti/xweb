@@ -30,11 +30,20 @@ type Instance interface {
 	DefaultHttpHandlerProvider
 	Enabled() bool
 	LoadConfig(cfgmap map[interface{}]interface{}) error
-	Run()
+
 	Shutdown()
 	GetRegistry() Registry
 	GetDemuxFactory() DemuxFactory
 	GetConfig() *InstanceConfig
+
+	// Run will build and start all components
+	Run()
+
+	// Build will build all components. Usually called before a Start()
+	Build()
+
+	// Start will start all built components. Usually called after Build()
+	Start()
 }
 
 const (
@@ -54,6 +63,8 @@ type InstanceImpl struct {
 // InstanceValidator allows custom validation logic to be run. Added during instance creatation. See NewInstance(...).
 type InstanceValidator func(config *InstanceConfig) error
 
+type ServerMutator func(instance Instance, serverConfig *ServerConfig, server *Server) error
+
 // InstanceOptions a set of options used by an instance
 type InstanceOptions struct {
 	// InstanceValidators custom instance validation, may be nil/empty
@@ -67,6 +78,9 @@ type InstanceOptions struct {
 
 	// DefaultConfigSection is the configuration section for the xweb instance.
 	DefaultConfigSection string
+
+	// ServerMutators allow the mutation of Server objects after they are built.
+	ServerMutators []ServerMutator
 }
 
 var _ Instance = &InstanceImpl{}
