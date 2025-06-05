@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/foundation/v2/tlz"
 	"github.com/openziti/identity"
 	"time"
 )
@@ -301,6 +302,12 @@ func (tlsVersionOptions *TlsVersionOptions) Default() {
 
 // Parse parses a config map
 func (tlsVersionOptions *TlsVersionOptions) Parse(config map[interface{}]interface{}) error {
+	if tlz.FipsEnabled() {
+		tlsVersionOptions.MinTLSVersion = int(tlz.GetMinTlsVersion())
+		tlsVersionOptions.MaxTLSVersion = int(tlz.GetMaxTlsVersion())
+		pfxlog.Logger().Warnf("FIPS mode enabled, TLS version configuration ignored and set to require %s", ReverseTlsVersionMap[tlsVersionOptions.MaxTLSVersion])
+		return nil
+	}
 	if interfaceVal, ok := config["minTLSVersion"]; ok {
 		var ok bool
 		if tlsVersionOptions.minTLSVersionStr, ok = interfaceVal.(string); ok {
