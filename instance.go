@@ -18,10 +18,13 @@ package xweb
 
 import (
 	"context"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/identity"
+	"crypto/tls"
+	"net"
 	"net/http"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/identity"
 )
 
 // Instance implements config.Subconfig to allow Instance implementations to be used during the normal component startup
@@ -65,6 +68,10 @@ type InstanceValidator func(config *InstanceConfig) error
 
 type ServerMutator func(instance Instance, serverConfig *ServerConfig, server *Server) error
 
+type ListenerFactory interface {
+	New(bindPoint *BindPointConfig, serverName string, tlsConfig *tls.Config) (net.Listener, error)
+}
+
 // InstanceOptions a set of options used by an instance
 type InstanceOptions struct {
 	// InstanceValidators custom instance validation, may be nil/empty
@@ -81,6 +88,9 @@ type InstanceOptions struct {
 
 	// ServerMutators allow the mutation of Server objects after they are built.
 	ServerMutators []ServerMutator
+
+	// ListenerFactory allows specifying a factory to provide listeners
+	ListenerFactory ListenerFactory
 }
 
 var _ Instance = &InstanceImpl{}

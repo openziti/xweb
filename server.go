@@ -21,14 +21,14 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/v2/debugz"
-	transporttls "github.com/openziti/transport/v2/tls"
-	"github.com/openziti/xweb/v2/middleware"
 	"io"
 	"log"
 	"net"
 	"net/http"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/foundation/v2/debugz"
+	"github.com/openziti/xweb/v2/middleware"
 )
 
 type ContextKey string
@@ -205,9 +205,9 @@ func (server *Server) Start() error {
 		cfg := httpServer.TLSConfig
 		// make sure to listen to the expected protocols
 		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
-		l, err := transporttls.ListenTLS(httpServer.Addr, httpServer.ServerConfig.Name, cfg)
+		l, err := httpServer.InstanceConfig.Options.ListenerFactory.New(httpServer.BindPointConfig, httpServer.ServerConfig.Name, httpServer.Server.TLSConfig)
 		if err != nil {
-			return fmt.Errorf("error listening: %s", err)
+			return err
 		}
 		err = httpServer.Serve(l)
 
