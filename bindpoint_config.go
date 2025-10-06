@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openziti/sdk-golang/ziti"
 	"github.com/pkg/errors"
 )
 
@@ -43,7 +42,6 @@ type BindPointConfig struct {
 type IdentityConfig struct {
 	Identity       []byte //an openziti identity
 	Service        string //name of the service to bind
-	Opts           ziti.ListenOptions
 	ClientAuthType tls.ClientAuthType
 	ServeTLS       bool
 }
@@ -94,12 +92,6 @@ func (bindPoint *BindPointConfig) Parse(config map[interface{}]interface{}) erro
 				bindPoint.Identity.ClientAuthType = tls.RequireAndVerifyClientCert
 			default:
 				bindPoint.Identity.ClientAuthType = tls.VerifyClientCertIfGiven
-			}
-		}
-		if listenOptsCfg, ok := identCfg["listenOptions"]; ok {
-			optsCfg := listenOptsCfg.(map[interface{}]interface{})
-			if asId, ok := optsCfg["bindUsingEdgeIdentity"].(bool); ok {
-				bindPoint.Identity.Opts.BindUsingEdgeIdentity = asId
 			}
 		}
 		if serveTls, ok := identCfg["serveTLS"].(bool); ok {
