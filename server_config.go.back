@@ -17,6 +17,7 @@
 package xweb
 
 import (
+	goerrors "errors"
 	"fmt"
 
 	"github.com/michaelquigley/pfxlog"
@@ -72,23 +73,26 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 		return errors.New("apis section is required")
 	}
 
-	//parse bindPoints
-	if bindPointArrVal, ok := configMap["bindPoints"]; ok {
-		if bindPointArr, ok := bindPointArrVal.([]interface{}); ok {
-			if f, e := BindPointFactories.FindFactory(bindPointArr); e == nil {
-				if bp, factoryErr := f.New(bindPointArr); factoryErr == nil {
-					config.BindPoints = append(config.BindPoints, bp)
+	//parse listen address
+	if addressInterface, ok := configMap["bindPoints"]; ok {
+		if addressesArrayInterfaces, ok := addressInterface.([]interface{}); ok {
+			for i, addressInterface := range addressesArrayInterfaces {
+				if addressMap, ok := addressInterface.(map[interface{}]interface{}); ok {
+					ubp := &UnderlayBindPoint{}
+					if err := ubp.Parse(addressMap); err != nil {
+						return fmt.Errorf("error parsing address configuration at index [%d]: %v", i, err)
+					}
+
+					config.BindPoints = append(config.BindPoints, ubp)
 				} else {
-					return errors.Wrapf(factoryErr, "creating bindPoint failed")
+					return fmt.Errorf("error parsing address configuration at index [%d]: not a map", i)
 				}
-			} else {
-				return errors.Wrapf(e, "finding a bindPoint factory failed, this is unepxected")
 			}
 		} else {
-			return errors.New("bindPoints must be an array")
+			return errors.New("addresses section must be an array")
 		}
 	} else {
-		return errors.New("bindPoints is required")
+		return errors.New("addresses section is required")
 	}
 
 	//parse identity
@@ -130,50 +134,51 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 
 // Validate all ServerConfig values
 func (config *ServerConfig) Validate(registry Registry) error {
+	var errs []error
 	if config.Name == "" {
-		return errors.New("name must not be empty")
+		errs = append(errs, errors.New("name must not be empty"))
 	}
 
 	if len(config.APIs) <= 0 {
-		return errors.New("no APIs specified, must specify at least one")
+		errs = append(errs, errors.New("no APIs specified, must specify at least one"))
 	}
 
 	for i, api := range config.APIs {
 		if err := api.Validate(); err != nil {
-			return fmt.Errorf("invalid ApiConfig at index [%d]: %v", i, err)
+			errs = append(errs, fmt.Errorf("invalid ApiConfig at index [%d]: %v", i, err))
 		}
 
 		//check if binding is valid
 		if binding := registry.Get(api.Binding()); binding == nil {
-			return fmt.Errorf("invalid ApiConfig at index [%d]: invalid binding %s", i, api.Binding())
+			errs = append(errs, fmt.Errorf("invalid ApiConfig at index [%d]: invalid binding %s", i, api.Binding()))
 		}
 	}
 
 	if len(config.BindPoints) <= 0 {
-		return errors.New("no bindPoint specified, must specify at lest one")
+		errs = append(errs, errors.New("no addresses specified, must specify at lest one"))
 	}
 
-	for i, bp := range config.BindPoints {
-		if err := bp.Validate(); err != nil {
-			return fmt.Errorf("invalid bindPoint at index [%d]: %v", i, err)
+	for i, address := range config.BindPoints {
+		if err := address.Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("invalid address at index [%d]: %v", i, err))
 		}
 	}
 
 	if config.Identity == nil {
 		if config.DefaultIdentity == nil {
-			return errors.New("no default identity specified and no identity specified")
+			errs = append(errs, errors.New("no default identity specified and no identity specified"))
 		}
 
 		config.Identity = config.DefaultIdentity
 	}
 
 	if err := config.Options.TlsVersionOptions.Validate(); err != nil {
-		return fmt.Errorf("invalid TLS version option: %v", err)
+		errs = append(errs, fmt.Errorf("invalid TLS version option: %v", err))
 	}
 
 	if err := config.Options.TimeoutOptions.Validate(); err != nil {
-		return fmt.Errorf("invalid timeout option: %v", err)
+		errs = append(errs, fmt.Errorf("invalid timeout option: %v", err))
 	}
 
-	return nil
+	return goerrors.Join(errs...)
 }

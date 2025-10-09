@@ -33,6 +33,10 @@ import (
 
 type ContextKey string
 
+const (
+	ZitiCtrlAddressHeader = "ziti-ctrl-address"
+)
+
 type ServerContext struct {
 	BindPoint    BindPoint
 	ServerConfig *ServerConfig
@@ -41,15 +45,15 @@ type ServerContext struct {
 
 type namedHttpServer struct {
 	*http.Server
-	ApiBindingList  []string
-	BindPointConfig BindPoint
-	ServerConfig    *ServerConfig
-	InstanceConfig  *InstanceConfig
+	ApiBindingList []string
+	BindPoint      BindPoint
+	ServerConfig   *ServerConfig
+	InstanceConfig *InstanceConfig
 }
 
 func (s namedHttpServer) NewBaseContext(_ net.Listener) context.Context {
 	serverContext := &ServerContext{
-		BindPoint:    s.BindPointConfig,
+		BindPoint:    s.BindPoint,
 		ServerConfig: s.ServerConfig,
 		Config:       s.InstanceConfig,
 	}
@@ -117,10 +121,10 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 
 	for _, bindPoint := range serverConfig.BindPoints {
 		namedServer := &namedHttpServer{
-			ApiBindingList:  apiBindingList,
-			ServerConfig:    serverConfig,
-			BindPointConfig: bindPoint,
-			InstanceConfig:  instance.GetConfig(),
+			ApiBindingList: apiBindingList,
+			ServerConfig:   serverConfig,
+			BindPoint:      bindPoint,
+			InstanceConfig: instance.GetConfig(),
 			Server: &http.Server{
 				Addr:         bindPoint.ServerAddress(),
 				WriteTimeout: serverConfig.Options.WriteTimeout,
@@ -146,9 +150,9 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 	return server, nil
 }
 
-func (server *Server) wrapHandler(_ *ServerConfig, bp BindPoint, handler http.Handler) http.Handler {
+func (server *Server) wrapHandler(_ *ServerConfig, point BindPoint, handler http.Handler) http.Handler {
 	//innermost/bottom -> outermost/top
-	handler = bp.BeforeHandler(handler)
+	handler = server.wrapSetCtrlAddressHeader(point, handler)
 	handler = server.wrapPanicRecovery(handler)
 	handler = middleware.NewCompressionHandler(handler)
 	return handler
@@ -173,6 +177,24 @@ func (server *Server) wrapPanicRecovery(handler http.Handler) http.Handler {
 	return wrappedHandler
 }
 
+// wrapSetCtrlAddressHeader will check to see if the bindPoint is configured to advertise a "new address". If so
+// the value is added to the ZitiCtrlAddressHeader which will be sent out on every response. Clients can check this
+// header to be notified that the controller is or will be moving from one ip/hostname to another. When the
+// new address value is set, both the old and new addresses should be valid as the clients will begin using the
+// new address on their next connect.
+func (server *Server) wrapSetCtrlAddressHeader(point BindPoint, handler http.Handler) http.Handler {
+	wrappedHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if point.NewAddress != "" {
+			address := "https://" + point.NewAddress
+			writer.Header().Set(ZitiCtrlAddressHeader, address)
+		}
+
+		handler.ServeHTTP(writer, request)
+	})
+
+	return wrappedHandler
+}
+
 // Start the server and all underlying http.Server's
 func (server *Server) Start() error {
 	logger := pfxlog.Logger()
@@ -183,12 +205,11 @@ func (server *Server) Start() error {
 		cfg := httpServer.TLSConfig
 		// make sure to listen to the expected protocols
 		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
-		l, err := httpServer.BindPointConfig.Listener(httpServer.ServerConfig.Name, httpServer.Server.TLSConfig)
+		l, err := httpServer.BindPoint.Listener(cfg)
 		if err != nil {
 			return err
 		}
 		err = httpServer.Serve(l)
-
 		if !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("error listening: %s", err)
 		}
