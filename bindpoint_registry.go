@@ -2,7 +2,7 @@ package xweb
 
 import (
 	gotls "crypto/tls"
-	"errors"
+	"fmt"
 	"net"
 	"net/http"
 
@@ -47,5 +47,5 @@ func (registry *BindPointFactoryRegistry) FindFactory(config []interface{}) (Bin
 			return f, nil
 		}
 	}
-	return nil, errors.New("BindPointFactoryRegistry.FindFactory not implemented yet")
+	return nil, fmt.Errorf("BindPointFactoryRegistry.FindFactory failed to find a factory for %v", config)
 }
