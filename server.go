@@ -25,6 +25,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/v2/debugz"
@@ -177,23 +178,31 @@ func (server *Server) wrapPanicRecovery(handler http.Handler) http.Handler {
 func (server *Server) Start() error {
 	logger := pfxlog.Logger()
 
+	var wg sync.WaitGroup
 	for _, httpServer := range server.HttpServers {
-		logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", httpServer.Addr, httpServer.ServerConfig.Name, httpServer.ApiBindingList)
+		wg.Add(1)
+		svr := httpServer
+		go func() {
+			defer wg.Done()
+			logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", svr.Addr, svr.ServerConfig.Name, svr.ApiBindingList)
 
-		cfg := httpServer.TLSConfig
-		// make sure to listen to the expected protocols
-		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
-		l, err := httpServer.BindPointConfig.Listener(httpServer.ServerConfig.Name, httpServer.Server.TLSConfig)
-		if err != nil {
-			return err
-		}
-		err = httpServer.Serve(l)
-
-		if !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("error listening: %s", err)
-		}
+			cfg := svr.TLSConfig
+			// make sure to listen to the expected protocols
+			cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
+			l, err := svr.BindPointConfig.Listener(svr.ServerConfig.Name, svr.Server.TLSConfig)
+			if err != nil {
+				logger.Errorf("error creating listener for server: %s at %s, %v", svr.ServerConfig.Name, svr.BindPointConfig.ServerAddress(), err)
+			}
+			err = svr.Serve(l)
+			if !errors.Is(err, http.ErrServerClosed) {
+				logger.Errorf("error running server: %s at %s, %v", svr.ServerConfig.Name, svr.BindPointConfig.ServerAddress(), err)
+			}
+		}()
 	}
 
+	logger.Infof("all servers running")
+	wg.Wait()
+	logger.Infof("all servers no longer running")
 	return nil
 }
 

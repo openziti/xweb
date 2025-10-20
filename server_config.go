@@ -17,7 +17,10 @@
 package xweb
 
 import (
+	gotls "crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
@@ -75,14 +78,21 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 	//parse bindPoints
 	if bindPointArrVal, ok := configMap["bindPoints"]; ok {
 		if bindPointArr, ok := bindPointArrVal.([]interface{}); ok {
-			if f, e := BindPointFactories.FindFactory(bindPointArr); e == nil {
-				if bp, factoryErr := f.New(bindPointArr); factoryErr == nil {
-					config.BindPoints = append(config.BindPoints, bp)
+			for i, bp := range bindPointArr {
+				if bpMap, ok := bp.(map[interface{}]interface{}); ok {
+					if len(BindPointListenerFactoryRegistry) < 1 {
+						return fmt.Errorf("cannot configure bindPoints, no BindPointFactory Registered")
+					}
+					for _, bpf := range BindPointListenerFactoryRegistry {
+						if b, bpe := bpf.New(bpMap); bpe != nil {
+							return errors.Wrapf(bpe, "error parsing bindPoint configuration at index [%d]", i)
+						} else {
+							config.BindPoints = append(config.BindPoints, b)
+						}
+					}
 				} else {
-					return errors.Wrapf(factoryErr, "creating bindPoint failed")
+					return fmt.Errorf("error parsing bindPoint configuration at index [%d]: not a map", i)
 				}
-			} else {
-				return errors.Wrapf(e, "finding a bindPoint factory failed, this is unepxected")
 			}
 		} else {
 			return errors.New("bindPoints must be an array")
@@ -154,8 +164,16 @@ func (config *ServerConfig) Validate(registry Registry) error {
 	}
 
 	for i, bp := range config.BindPoints {
-		if err := bp.Validate(); err != nil {
-			return fmt.Errorf("invalid bindPoint at index [%d]: %v", i, err)
+		if bp != nil {
+			id := config.Identity
+			if id == nil {
+				id = config.DefaultIdentity
+			}
+			if err := bp.Validate(id); err != nil {
+				return fmt.Errorf("invalid bindPoint at index [%d]: %v", i, err)
+			}
+		} else {
+			return errors.New("a nil bindPoint was processed")
 		}
 	}
 
