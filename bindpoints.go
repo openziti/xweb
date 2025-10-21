@@ -8,7 +8,7 @@ import (
 	"github.com/openziti/identity"
 )
 
-var BindPointListenerFactoryRegistry = make([]BindPointListenerFactory, 0)
+var BindPointListenerFactoryRegistry []BindPointListenerFactory
 
 type BindPointListenerFactory interface {
 	New(map[interface{}]interface{}) (BindPoint, error)
