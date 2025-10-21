@@ -17,10 +17,7 @@
 package xweb
 
 import (
-	gotls "crypto/tls"
 	"fmt"
-	"net"
-	"net/http"
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
