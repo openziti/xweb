@@ -39,6 +39,6 @@ type BindPoint interface {
 	Listener(serverName string, tlsConfig *gotls.Config) (net.Listener, error) // a listener to be used with the http server
 	BeforeHandler(next http.Handler) http.Handler                              // called before xweb handlers execute
 	AfterHandler(prev http.Handler) http.Handler                               // called after xweb handlers complete
-	Validate(identity.Identity) []error                                        // validates the BindPoint
+	Validate(identity.Identity) error                                          // validates the BindPoint
 	ServerAddress() string                                                     // the address the server
 }

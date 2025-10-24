@@ -77,7 +77,7 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 		if bindPointArr, ok := bindPointArrVal.([]interface{}); ok {
 			for i, bp := range bindPointArr {
 				if bpMap, ok := bp.(map[interface{}]interface{}); ok {
-					if len(BindPointListenerFactoryRegistry) < 1 {
+					if len(BindPointListenerFactoryRegistry) == 0 {
 						return fmt.Errorf("cannot configure bindPoints, no BindPointFactory Registered")
 					}
 					for _, bpf := range BindPointListenerFactoryRegistry {
