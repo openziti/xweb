@@ -18,6 +18,7 @@ package xweb
 
 import (
 	"fmt"
+
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/identity"
 	"github.com/pkg/errors"
@@ -29,7 +30,7 @@ type ServerConfig struct {
 	DefaultHttpHandlerProviderImpl
 	Name       string
 	APIs       []*ApiConfig
-	BindPoints []*BindPointConfig
+	BindPoints []BindPoint
 	Options    ServerConfigOptions
 
 	DefaultIdentity identity.Identity
@@ -71,26 +72,30 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 		return errors.New("apis section is required")
 	}
 
-	//parse listen address
-	if addressInterface, ok := configMap["bindPoints"]; ok {
-		if addressesArrayInterfaces, ok := addressInterface.([]interface{}); ok {
-			for i, addressInterface := range addressesArrayInterfaces {
-				if addressMap, ok := addressInterface.(map[interface{}]interface{}); ok {
-					address := &BindPointConfig{}
-					if err := address.Parse(addressMap); err != nil {
-						return fmt.Errorf("error parsing address configuration at index [%d]: %v", i, err)
+	//parse bindPoints
+	if bindPointArrVal, ok := configMap["bindPoints"]; ok {
+		if bindPointArr, ok := bindPointArrVal.([]interface{}); ok {
+			for i, bp := range bindPointArr {
+				if bpMap, ok := bp.(map[interface{}]interface{}); ok {
+					if len(BindPointListenerFactoryRegistry) == 0 {
+						return fmt.Errorf("cannot configure bindPoints, no BindPointFactory Registered")
 					}
-
-					config.BindPoints = append(config.BindPoints, address)
+					for _, bpf := range BindPointListenerFactoryRegistry {
+						if b, bpe := bpf.New(bpMap); bpe != nil {
+							return errors.Wrapf(bpe, "error parsing bindPoint configuration at index [%d]", i)
+						} else {
+							config.BindPoints = append(config.BindPoints, b)
+						}
+					}
 				} else {
-					return fmt.Errorf("error parsing address configuration at index [%d]: not a map", i)
+					return fmt.Errorf("error parsing bindPoint configuration at index [%d]: not a map", i)
 				}
 			}
 		} else {
-			return errors.New("addresses section must be an array")
+			return errors.New("bindPoints must be an array")
 		}
 	} else {
-		return errors.New("addresses section is required")
+		return errors.New("bindPoints is required")
 	}
 
 	//parse identity
@@ -152,12 +157,20 @@ func (config *ServerConfig) Validate(registry Registry) error {
 	}
 
 	if len(config.BindPoints) <= 0 {
-		return errors.New("no addresses specified, must specify at lest one")
+		return errors.New("no bindPoint specified, must specify at lest one")
 	}
 
-	for i, address := range config.BindPoints {
-		if err := address.Validate(); err != nil {
-			return fmt.Errorf("invalid address at index [%d]: %v", i, err)
+	for i, bp := range config.BindPoints {
+		if bp != nil {
+			id := config.Identity
+			if id == nil {
+				id = config.DefaultIdentity
+			}
+			if err := bp.Validate(id); err != nil {
+				return fmt.Errorf("invalid bindPoint at index [%d]: %v", i, err)
+			}
+		} else {
+			return errors.New("a nil bindPoint was processed")
 		}
 	}
 
@@ -178,5 +191,4 @@ func (config *ServerConfig) Validate(registry Registry) error {
 	}
 
 	return nil
-
 }

@@ -21,24 +21,21 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/foundation/v2/debugz"
-	transporttls "github.com/openziti/transport/v2/tls"
-	"github.com/openziti/xweb/v2/middleware"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"sync"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/foundation/v2/debugz"
+	"github.com/openziti/xweb/v2/middleware"
 )
 
 type ContextKey string
 
-const (
-	ZitiCtrlAddressHeader = "ziti-ctrl-address"
-)
-
 type ServerContext struct {
-	BindPoint    *BindPointConfig
+	BindPoint    BindPoint
 	ServerConfig *ServerConfig
 	Config       *InstanceConfig
 }
@@ -46,7 +43,7 @@ type ServerContext struct {
 type namedHttpServer struct {
 	*http.Server
 	ApiBindingList  []string
-	BindPointConfig *BindPointConfig
+	BindPointConfig BindPoint
 	ServerConfig    *ServerConfig
 	InstanceConfig  *InstanceConfig
 }
@@ -126,7 +123,7 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 			BindPointConfig: bindPoint,
 			InstanceConfig:  instance.GetConfig(),
 			Server: &http.Server{
-				Addr:         bindPoint.InterfaceAddress,
+				Addr:         bindPoint.ServerAddress(),
 				WriteTimeout: serverConfig.Options.WriteTimeout,
 				ReadTimeout:  serverConfig.Options.ReadTimeout,
 				IdleTimeout:  serverConfig.Options.IdleTimeout,
@@ -150,9 +147,9 @@ func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 	return server, nil
 }
 
-func (server *Server) wrapHandler(_ *ServerConfig, point *BindPointConfig, handler http.Handler) http.Handler {
+func (server *Server) wrapHandler(_ *ServerConfig, bp BindPoint, handler http.Handler) http.Handler {
 	//innermost/bottom -> outermost/top
-	handler = server.wrapSetCtrlAddressHeader(point, handler)
+	handler = bp.BeforeHandler(handler)
 	handler = server.wrapPanicRecovery(handler)
 	handler = middleware.NewCompressionHandler(handler)
 	return handler
@@ -177,45 +174,35 @@ func (server *Server) wrapPanicRecovery(handler http.Handler) http.Handler {
 	return wrappedHandler
 }
 
-// wrapSetCtrlAddressHeader will check to see if the bindPoint is configured to advertise a "new address". If so
-// the value is added to the ZitiCtrlAddressHeader which will be sent out on every response. Clients can check this
-// header to be notified that the controller is or will be moving from one ip/hostname to another. When the
-// new address value is set, both the old and new addresses should be valid as the clients will begin using the
-// new address on their next connect.
-func (server *Server) wrapSetCtrlAddressHeader(point *BindPointConfig, handler http.Handler) http.Handler {
-	wrappedHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if point.NewAddress != "" {
-			address := "https://" + point.NewAddress
-			writer.Header().Set(ZitiCtrlAddressHeader, address)
-		}
-
-		handler.ServeHTTP(writer, request)
-	})
-
-	return wrappedHandler
-}
-
 // Start the server and all underlying http.Server's
 func (server *Server) Start() error {
 	logger := pfxlog.Logger()
 
+	var wg sync.WaitGroup
 	for _, httpServer := range server.HttpServers {
-		logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", httpServer.Addr, httpServer.ServerConfig.Name, httpServer.ApiBindingList)
+		wg.Add(1)
+		svr := httpServer
+		go func() {
+			defer wg.Done()
+			logger.Infof("starting ApiConfig to listen and serve tls on %s for server %s with APIs: %v", svr.Addr, svr.ServerConfig.Name, svr.ApiBindingList)
 
-		cfg := httpServer.TLSConfig
-		// make sure to listen to the expected protocols
-		cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
-		l, err := transporttls.ListenTLS(httpServer.Addr, httpServer.ServerConfig.Name, cfg)
-		if err != nil {
-			return fmt.Errorf("error listening: %s", err)
-		}
-		err = httpServer.Serve(l)
-
-		if !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("error listening: %s", err)
-		}
+			cfg := svr.TLSConfig
+			// make sure to listen to the expected protocols
+			cfg.NextProtos = append(cfg.NextProtos, "h2", "http/1.1", "")
+			l, err := svr.BindPointConfig.Listener(svr.ServerConfig.Name, svr.Server.TLSConfig)
+			if err != nil {
+				logger.Errorf("error creating listener for server: %s at %s, %v", svr.ServerConfig.Name, svr.BindPointConfig.ServerAddress(), err)
+			}
+			err = svr.Serve(l)
+			if !errors.Is(err, http.ErrServerClosed) {
+				logger.Errorf("error running server: %s at %s, %v", svr.ServerConfig.Name, svr.BindPointConfig.ServerAddress(), err)
+			}
+		}()
 	}
 
+	logger.Infof("all servers running")
+	wg.Wait()
+	logger.Infof("all servers no longer running")
 	return nil
 }
 

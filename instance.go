@@ -18,10 +18,11 @@ package xweb
 
 import (
 	"context"
-	"github.com/michaelquigley/pfxlog"
-	"github.com/openziti/identity"
 	"net/http"
 	"time"
+
+	"github.com/michaelquigley/pfxlog"
+	"github.com/openziti/identity"
 )
 
 // Instance implements config.Subconfig to allow Instance implementations to be used during the normal component startup
