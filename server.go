@@ -29,7 +29,7 @@ import (
 
 	"github.com/michaelquigley/pfxlog"
 	"github.com/openziti/foundation/v2/debugz"
-	"github.com/openziti/xweb/v2/middleware"
+	"github.com/openziti/xweb/v3/middleware"
 )
 
 type ContextKey string
