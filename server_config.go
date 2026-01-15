@@ -107,7 +107,7 @@ func (config *ServerConfig) Parse(configMap map[interface{}]interface{}, pathCon
 					return fmt.Errorf("error loading identity: %v", err)
 				}
 
-				if err := config.DefaultIdentity.WatchFiles(); err != nil {
+				if err := config.Identity.WatchFiles(); err != nil {
 					pfxlog.Logger().Warnf("could not enable file watching on bind point identity: %v", err)
 				}
 			} else {
