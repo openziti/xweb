@@ -33,6 +33,9 @@ type BindPointListenerFactory interface {
 	New(map[interface{}]interface{}) (BindPoint, error)
 }
 
+// BindPointType is a string discriminator for BindPoint implementations.
+type BindPointType string
+
 // The BindPoint interface is used to provide necessary information to xweb. Primarily, it is used to provide
 // listeners to the http server xweb controls.
 type BindPoint interface {
@@ -41,4 +44,5 @@ type BindPoint interface {
 	AfterHandler(prev http.Handler) http.Handler                               // called after xweb handlers complete
 	Validate(identity.Identity) error                                          // validates the BindPoint
 	ServerAddress() string                                                     // the address the server
+	Type() BindPointType                                                       // the type of bind point
 }
