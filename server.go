@@ -192,6 +192,7 @@ func (server *Server) Start() error {
 			l, err := svr.BindPointConfig.Listener(svr.ServerConfig.Name, svr.Server.TLSConfig)
 			if err != nil {
 				logger.Errorf("error creating listener for server: %s at %s, %v", svr.ServerConfig.Name, svr.BindPointConfig.ServerAddress(), err)
+				return
 			}
 			err = svr.Serve(l)
 			if !errors.Is(err, http.ErrServerClosed) {
