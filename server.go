@@ -78,6 +78,20 @@ type Server struct {
 func NewServer(instance Instance, serverConfig *ServerConfig) (*Server, error) {
 	logWriter := pfxlog.Logger().Writer()
 
+	conflicts := serverConfig.Identity.CheckServerCertSansForConflicts()
+
+	if len(conflicts) > 0 {
+		conflictsStr := ""
+		for _, conflict := range conflicts {
+			if conflictsStr != "" {
+				conflictsStr += ", "
+			}
+			conflictsStr += conflictsStr + conflict.Error()
+		}
+
+		return nil, fmt.Errorf("server certificate SANs conflict, ensure only 1 certificate handls each DNS/IP hostname: %s", conflictsStr)
+	}
+
 	tlsConfig := serverConfig.Identity.ServerTLSConfig()
 	tlsConfig.ClientAuth = tls.RequestClientCert
 	tlsConfig.MinVersion = uint16(serverConfig.Options.MinTLSVersion)
