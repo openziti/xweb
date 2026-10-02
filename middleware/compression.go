@@ -21,13 +21,14 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"fmt"
-	"github.com/andybalholm/brotli"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/andybalholm/brotli"
 )
 
 type HttpEncoding string
@@ -170,6 +171,12 @@ func (w *wrappedResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
+// Unwrap returns the wrapped http.ResponseWriter, so http.ResponseController can reach the
+// connection, e.g. to set per-request read and write deadlines.
+func (w *wrappedResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // CloseHeaderSection is used by the encoder specific function handler to apply the
 // requested HTTP status and close the header section. This is called during the encoders
 // defer'ed section to occur after all content is written. Emulates
@@ -249,6 +256,7 @@ func handleBr(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	defer func() {
 		_ = br.Close()
 		w.Header().Set(HttpHeaderContentLength, fmt.Sprint(len(b.Bytes())))
+		wrappedWriter.CloseHeaderSection()
 		_, _ = w.Write(b.Bytes())
 	}()
 
