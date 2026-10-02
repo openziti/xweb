@@ -387,3 +387,29 @@ func Test_compressionHandlerSupportsResponseController(t *testing.T) {
 		})
 	}
 }
+
+func Test_compressionHandlerPreservesStatus(t *testing.T) {
+	for _, encoding := range []HttpEncoding{HttpEncodingIdentity, HttpEncodingGzip, HttpEncodingBr, HttpEncodingDeflate} {
+		t.Run(string(encoding), func(t *testing.T) {
+			req := require.New(t)
+
+			handler := NewCompressionHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("unavailable"))
+			}))
+
+			srv := httptest.NewServer(handler)
+			defer srv.Close()
+
+			r, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+			req.NoError(err)
+			r.Header.Set(HttpHeaderAcceptEncoding, string(encoding))
+
+			resp, err := (&http.Transport{DisableCompression: true}).RoundTrip(r)
+			req.NoError(err)
+			_ = resp.Body.Close()
+
+			req.Equal(http.StatusServiceUnavailable, resp.StatusCode)
+		})
+	}
+}

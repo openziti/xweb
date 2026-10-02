@@ -256,6 +256,7 @@ func handleBr(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	defer func() {
 		_ = br.Close()
 		w.Header().Set(HttpHeaderContentLength, fmt.Sprint(len(b.Bytes())))
+		wrappedWriter.CloseHeaderSection()
 		_, _ = w.Write(b.Bytes())
 	}()
 
