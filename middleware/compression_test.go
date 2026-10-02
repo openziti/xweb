@@ -1,9 +1,12 @@
 package middleware
 
 import (
-	"github.com/stretchr/testify/require"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_getSupportedAcceptEncoding(t *testing.T) {
@@ -356,4 +359,31 @@ func Test_getSupportedAcceptEncoding(t *testing.T) {
 
 		req.Equal(HttpEncodingDeflate, encoding)
 	})
+}
+
+func Test_compressionHandlerSupportsResponseController(t *testing.T) {
+	for _, encoding := range []HttpEncoding{HttpEncodingIdentity, HttpEncodingGzip, HttpEncodingBr, HttpEncodingDeflate} {
+		t.Run(string(encoding), func(t *testing.T) {
+			req := require.New(t)
+
+			var deadlineErr error
+			handler := NewCompressionHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				deadlineErr = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Minute))
+				_, _ = w.Write([]byte("hello"))
+			}))
+
+			srv := httptest.NewServer(handler)
+			defer srv.Close()
+
+			r, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+			req.NoError(err)
+			r.Header.Set(HttpHeaderAcceptEncoding, string(encoding))
+
+			resp, err := (&http.Transport{DisableCompression: true}).RoundTrip(r)
+			req.NoError(err)
+			_ = resp.Body.Close()
+
+			req.NoError(deadlineErr)
+		})
+	}
 }

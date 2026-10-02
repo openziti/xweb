@@ -21,13 +21,14 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"fmt"
-	"github.com/andybalholm/brotli"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/andybalholm/brotli"
 )
 
 type HttpEncoding string
@@ -168,6 +169,12 @@ func (w *wrappedResponseWriter) WriteHeader(status int) {
 // to the http.ResponseWriter is handled via a defer'ed function call.
 func (w *wrappedResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
+}
+
+// Unwrap returns the wrapped http.ResponseWriter, so http.ResponseController can reach the
+// connection, e.g. to set per-request read and write deadlines.
+func (w *wrappedResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // CloseHeaderSection is used by the encoder specific function handler to apply the
